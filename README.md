@@ -1,3 +1,5 @@
+** Update 2016 September 18 **
+
 This is the ReadMe for my RFP_Bot for Slack.
 
 The purpose of the Bot is to have an easy to use interface for sales engineers to quickly
@@ -10,9 +12,12 @@ I built this Bot for 3 main reasons:
 a) I wanted to test Howdy.ai and build a Slack Bot.
 b) I wanted to leverage Unix domain sockets to communicate between Node.js and Python 
 services.
-c) I wanted to gain some experience with Natural Language Processing with the Python
+c) I wanted to gain some experience using Redis as a datastore.
+d) I wanted to gain some experience with Natural Language Processing with the Python
 library nltk.
-d) I wanted to gain some experience using Redis as a datastore.
+e) I wanted to gain experience using TensorFlow with Seq2Seq models to train a generative
+algorithm for responding to questions.
+
 
 Set up:
 I have included 30 hypothetical RFP questions and answers in CSV format inside the
@@ -32,6 +37,11 @@ and answers which will then be sent back to the Slack Bot via the Unix socket.
 
 4. The Slack Bot will parse the returned data from the query and display the results.
 
+5. seq2seq_nlp_model.py borrows heavily from the TensorFlow Seq2Seq tutorial at: 
+https://www.tensorflow.org/versions/r0.9/tutorials/seq2seq/index.html.  It contains 
+code for accessing the questions and answers in Redis, constructing tokens, then training
+a Seq2Seq model per the tutorial.  Finally, the model can be used to generate responses
+to user-entered queries that Slack Bot passes to Python service.
+
 Future Work:
-As I build an understanding of NLP and nltk, I will be modifying the query service to
-incorporate NLP to better match the user's query to questions in the database.
+Further integration of Seq2Seq code with Python middleware service to be completed

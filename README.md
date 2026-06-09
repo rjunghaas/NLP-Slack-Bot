@@ -1,47 +1,118 @@
-** Update 2016 September 18 **
+# NLP Slack Bot — RFP Assistant
 
-This is the ReadMe for my RFP_Bot for Slack.
+## Goal
 
-The purpose of the Bot is to have an easy to use interface for sales engineers to quickly
-query questions for Requests for Proposals (RFPs) from sales prospects.  Typically, this
-can take several hours of research to get answers to questions.  Using Slack as an
-interface for querying the database, we can speed up this process significantly for
-the sales engineer completing the RFP.
+This project demonstrates **semantic search via a Slack integration** — specifically, using natural language processing to help sales engineers find answers to RFP (Request for Proposal) questions faster.
 
-I built this Bot for 3 main reasons:
-a) I wanted to test Howdy.ai and build a Slack Bot.
-b) I wanted to leverage Unix domain sockets to communicate between Node.js and Python 
-services.
-c) I wanted to gain some experience using Redis as a datastore.
-d) I wanted to gain some experience with Natural Language Processing with the Python
-library nltk.
-e) I wanted to gain experience using TensorFlow with Seq2Seq models to train a generative
-algorithm for responding to questions.
+The original concept was developed in 2015–2016, when Slack was becoming ubiquitous in company tech stacks. The problem: sales engineers were spending 8–10 hours per RFP responding to repetitive questions from enterprise prospects. The vision was a Slack bot that a sales engineer could query by pasting in an RFP question, and the system would surface the closest matching answer from a library of previously answered questions — shortening time-to-answer and reducing dependence on tribal knowledge.
 
+This repository contains both the original 2016 implementation (on `main`) and a fully working 2026 rebuild (on `modern-rebuild`), demonstrating how the same problem is now solvable with far less infrastructure complexity.
 
-Set up:
-I have included 30 hypothetical RFP questions and answers in CSV format inside the
-rfp_bot directory.  To start, you will need to run the db_init.py script which will
-create a Redis database and populate with the data from the CSV file.
+---
 
-Technical Details:
-1. Slack Bot is built on top of Howdy.ai's Botkit.  This is a handy framework that wraps
-Slack's Real-Time APIs for enabling chats with bots.
+## Architecture Evolution
 
-2. Within the Slack Bot, users can send direct messages of key topics or questions to the
-Bot.  The Bot will then use a Unix domain socket to communicate with a Python Service.
-This is handled by a Node.js and Python framework called ZeroRPC which wraps ZeroMQ.
+### Original Vision (2015–2016) — `main` branch
 
-3. The Python service will then query the Redis Database and pull out 3 random question
-and answers which will then be sent back to the Slack Bot via the Unix socket.
+| Layer | Technology |
+|-------|-----------|
+| Slack bot front-end | Howdy + Botkit (Node.js) |
+| Cross-language bridge | ZeroRPC over TCP |
+| NLP / matching | Seq2Seq model (TensorFlow 1.x, Python 2) |
+| Data store | Redis (key-value Q&A pairs) |
 
-4. The Slack Bot will parse the returned data from the query and display the results.
+The Seq2Seq model was intended to find the closest matching question in the Redis database and return the stored answer.
 
-5. seq2seq_nlp_model.py borrows heavily from the TensorFlow Seq2Seq tutorial at: 
-https://www.tensorflow.org/versions/r0.9/tutorials/seq2seq/index.html.  It contains 
-code for accessing the questions and answers in Redis, constructing tokens, then training
-a Seq2Seq model per the tutorial.  Finally, the model can be used to generate responses
-to user-entered queries that Slack Bot passes to Python service.
+### Working Implementation (2026) — `modern-rebuild` branch
 
-Future Work:
-Further integration of Seq2Seq code with Python middleware service to be completed
+| Layer | Technology |
+|-------|-----------|
+| Slack bot front-end | Slack Bolt for Python (Socket Mode) |
+| Cross-language bridge | None — single Python service |
+| NLP / matching | `sentence-transformers` (`multi-qa-MiniLM-L6-cos-v1`) |
+| Vector store | Qdrant (Docker) |
+| Data store | Qdrant payload (vectors + Q&A metadata) |
+
+Key architectural changes:
+- **Single language**: Moving to Python for everything eliminated the need for ZeroRPC
+- **Pre-trained embeddings replace training**: A model pre-trained on 215M question-answer pairs provides semantic understanding out of the box — no training data or GPU required
+- **Vector database replaces key-value store**: Qdrant stores both the embeddings and the Q&A payload, enabling cosine similarity search directly against stored questions
+- **Socket Mode**: The bot connects to Slack over a persistent WebSocket — no public URL or ngrok tunnel required
+
+---
+
+## How It Works
+
+1. A sales engineer DMs the bot with an RFP question (e.g. *"Do you have any security certifications?"*)
+2. `rfp_bot.py` receives the message via Slack Bolt
+3. The question is converted to a 384-dimensional vector using `sentence-transformers`
+4. Qdrant performs a cosine similarity search against all stored question vectors
+5. Results above a confidence threshold are returned to Slack as individual messages, each showing the matched question, stored answer, and similarity score
+6. The sales engineer reviews the results, selects the best match, and edits as needed
+
+---
+
+## Project Structure
+
+```
+rfp_bot.py          — Slack Bolt app (message handler, search, response formatting)
+embeddings.py       — Model loading, vector generation, Qdrant search
+db_init.py          — Populates Qdrant from CSV (run once before starting the bot)
+RFP_Questions.csv   — 30 sample RFP Q&A pairs
+docker-compose.yml  — Runs Qdrant vector database
+requirements.txt    — Python dependencies
+```
+
+---
+
+## Setup
+
+**Prerequisites**: Python 3.9+, Docker
+
+**1. Start Qdrant:**
+```bash
+docker compose up -d
+```
+
+**2. Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+**3. Configure environment:**
+
+Create a `.env` file in the project root:
+```
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+```
+
+**4. Load Q&A data into Qdrant:**
+```bash
+python db_init.py
+```
+
+**5. Start the bot:**
+```bash
+python rfp_bot.py
+```
+
+---
+
+## Slack App Configuration
+
+Required OAuth scopes (Bot Token): `chat:write`, `im:history`, `im:read`
+
+Required event subscription: `message.im`
+
+Socket Mode must be enabled, with an App-Level Token scoped to `connections:write`.
+
+---
+
+## Technologies
+
+- [Slack Bolt for Python](https://slack.dev/bolt-python/) — Slack bot framework
+- [sentence-transformers](https://www.sbert.net/) — Pre-trained semantic embedding models
+- [Qdrant](https://qdrant.tech/) — Vector database for similarity search
+- [Docker](https://www.docker.com/) — Qdrant container runtime
+- [python-dotenv](https://pypi.org/project/python-dotenv/) — Environment variable management
